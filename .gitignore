@@ -1,0 +1,42 @@
+# Dependencies, builds and locally compiled encoders
+node_modules/
+.venv/
+.tools/
+dist/
+build/
+*.egg-info/
+
+# Imported tracks, exports and cached map tiles
+.data/
+*.mp4
+*.mov
+*.webm
+/examples/*
+!/examples/West Lake Loop.kml
+
+# Test output and coverage (keep test source code)
+test-results/
+playwright-report/
+.playwright-cli/
+.pytest_cache/
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+*.lcov
+__pycache__/
+*.py[cod]
+
+# Local environment, logs and editor/OS temporary files
+.env
+.env.*
+!.env.example
+*.log
+*.log.*
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+/tmp/

@@ -1,0 +1,34 @@
+{
+  "name": "pudding-track-studio",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "PuddingTrackStudio: fixed-camera KML replay and minimap video export",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AuncelFan/PuddingTrackStudio.git"
+  },
+  "homepage": "https://github.com/AuncelFan/PuddingTrackStudio",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:frontend": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "setup:hevc-alpha": "uv run python scripts/setup-hevc-alpha.py",
+    "start": "uv run python run.py",
+    "test": "uv run pytest && node --test tests/*.test.mjs",
+    "test:e2e": "node scripts/smoke.mjs",
+    "test:e2e:subpath": "node scripts/smoke-subpath.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.1",
+    "coordtransform": "^2.1.2",
+    "lucide": "^0.577.0",
+    "ol": "^10.7.0"
+  },
+  "devDependencies": {
+    "@playwright/cli": "^0.1.22",
+    "@playwright/test": "^1.58.2",
+    "vite": "^7.3.0"
+  }
+}

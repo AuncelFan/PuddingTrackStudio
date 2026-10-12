@@ -1,0 +1,24 @@
+[project]
+name = "pudding-track-studio"
+version = "0.1.0"
+license = "MIT"
+description = "Fixed-camera KML replay and deterministic minimap video export"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "python-multipart>=0.0.20,<1",
+  "defusedxml>=0.7.1,<1",
+  "imageio-ffmpeg>=0.6,<1",
+  "httpx>=0.28,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10"]
+
+[project.urls]
+Repository = "https://github.com/AuncelFan/PuddingTrackStudio"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
