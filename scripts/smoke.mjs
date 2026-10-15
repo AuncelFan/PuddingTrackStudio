@@ -127,6 +127,47 @@ try {
   assert.equal(await page.locator('.right-sidebar #format').count(), 0);
   assert.equal(await page.locator('#estimated-size').textContent(), '—');
   assert.deepEqual(await page.locator('#speed-presets button').evaluateAll(buttons => buttons.map(button => Number(button.dataset.speed))), [30, 60, 120, 240]);
+  assert.equal(await page.locator('#file').getAttribute('accept'), '.kml,.gpx');
+  const gpxBuffer = Buffer.from(`<gpx xmlns="http://www.topografix.com/GPX/1/1"><trk><name>GPX import</name>
+    <trkseg><trkpt lon="120" lat="30"><time>2026-01-01T00:00:00Z</time></trkpt>
+    <trkpt lon="120.00001" lat="30"><time>2026-01-01T00:00:00Z</time></trkpt>
+    <trkpt lon="120.001" lat="30"><time>2026-01-01T00:01:00Z</time></trkpt></trkseg>
+    <trkseg><trkpt lon="120.002" lat="30"><time>2026-01-01T00:02:00Z</time></trkpt>
+    <trkpt lon="120.003" lat="30"><time>2026-01-01T00:03:00Z</time></trkpt></trkseg>
+    </trk></gpx>`);
+  const [gpxResponse] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/api/tracks') && response.request().method() === 'POST'),
+    page.locator('#file').setInputFiles({ name: 'hike.gpx', mimeType: 'application/gpx+xml', buffer: gpxBuffer }),
+  ]);
+  assert.equal(gpxResponse.status(), 200);
+  const gpxTrack = (await gpxResponse.json()).tracks[0];
+  assert.equal(gpxTrack.pointCount, 4);
+  assert.equal(gpxTrack.segmentCount, 2);
+  await page.waitForFunction(id => document.querySelector('#track-select').value === id && !document.querySelector('#play').disabled, gpxTrack.id);
+  assert.equal(await page.locator('#track-name').textContent(), 'GPX import');
+  assert.match(await page.locator('#warnings').textContent(), /10 米.*减少 1 点/);
+  await page.locator('#play').click();
+  await page.waitForFunction(() => Number(document.querySelector('#timeline').value) > 0);
+  await page.locator('#play').click();
+  const [untimedResponse] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/api/tracks') && response.request().method() === 'POST'),
+    page.locator('#file').setInputFiles({ name: 'route.gpx', mimeType: 'application/gpx+xml', buffer: Buffer.from('<gpx><rte><rtept lon="120" lat="30"/><rtept lon="120.001" lat="30"/></rte></gpx>') }),
+  ]);
+  assert.equal(untimedResponse.status(), 422);
+  await page.waitForFunction(() => document.querySelector('.import-details').open);
+  await page.locator('#fallback-duration').fill('30');
+  const [retryResponse] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/api/tracks') && response.request().method() === 'POST'),
+    page.locator('#reimport').click(),
+  ]);
+  assert.equal(retryResponse.status(), 200);
+  const untimedTrack = (await retryResponse.json()).tracks[0];
+  assert.equal(untimedTrack.synthetic, true);
+  await page.waitForFunction(id => document.querySelector('#track-select').value === id && !document.querySelector('#play').disabled, untimedTrack.id);
+  assert.equal(await page.locator('#source-kind').textContent(), '推算时间');
+  await page.locator('#fallback-duration').fill('');
+  await page.locator('.import-details summary').click();
+  console.log('GPX browser import: timed segments, duplicate merge, playback and untimed duration retry verified');
   await page.locator('#demo').click();
   await page.waitForFunction(() => !document.querySelector('#play').disabled);
   // The plan request is asynchronous. Clicking immediately after importing

@@ -33,6 +33,53 @@ def test_bad_file_and_unknown_track(client):
     assert client.get('/api/tracks/' + '0' * 36).status_code == 404
 
 
+def test_gpx_upload_merge_read_and_plan(client):
+    contents = b'''<gpx xmlns="http://www.topografix.com/GPX/1/1"><trk><name>GPX hike</name><trkseg>
+      <trkpt lon="120" lat="30"><time>2026-01-01T00:00:00Z</time></trkpt>
+      <trkpt lon="120.00001" lat="30"><time>2026-01-01T00:00:00Z</time></trkpt>
+      <trkpt lon="120.001" lat="30"><time>2026-01-01T00:00:10Z</time></trkpt>
+    </trkseg></trk></gpx>'''
+    response = client.post('/api/tracks', files={'file': ('HIKE.GPX', contents, 'application/gpx+xml')})
+    assert response.status_code == 200
+    track = response.json()['tracks'][0]
+    assert track['filename'] == 'HIKE.GPX'
+    assert track['source'] == 'GPX trk'
+    assert track['pointCount'] == 2
+    assert track['warnings']
+    assert client.get(f"/api/tracks/{track['id']}").json() == track
+    plan = client.post(f"/api/tracks/{track['id']}/plan", json={'speed': 1, 'fps': 1})
+    assert plan.status_code == 200
+    assert plan.json()['frameCount'] == 11
+    assert plan.json()['frames'][0][:2] == [120.00001, 30]
+    assert plan.json()['frames'][-1][:2] == [120.001, 30]
+
+
+def test_gpx_upload_without_times_can_retry_with_duration(client):
+    contents = b'<gpx><rte><rtept lon="120" lat="30"/><rtept lon="120.001" lat="30"/></rte></gpx>'
+    files = {'file': ('route.gpx', contents)}
+    response = client.post('/api/tracks', files=files)
+    assert response.status_code == 422
+    assert response.json()['code'] == 'missing_time'
+    response = client.post('/api/tracks', files=files, data={'duration_seconds': '30'})
+    assert response.status_code == 200
+    track = response.json()['tracks'][0]
+    assert track['synthetic']
+    assert track['durationSeconds'] == 30
+
+
+def test_kml_upload_merges_nearby_same_time_points(client):
+    contents = b'''<kml xmlns:gx="http://www.google.com/kml/ext/2.2"><Placemark><gx:Track>
+      <when>2026-01-01T00:00:00Z</when><when>2026-01-01T00:00:00Z</when><when>2026-01-01T00:00:10Z</when>
+      <gx:coord>120 30 0</gx:coord><gx:coord>120.00001 30 0</gx:coord><gx:coord>120.001 30 0</gx:coord>
+    </gx:Track></Placemark></kml>'''
+    response = client.post('/api/tracks', files={'file': ('nearby.kml', contents)})
+    assert response.status_code == 200
+    track = response.json()['tracks'][0]
+    assert track['pointCount'] == 2
+    assert track['points'][0][:2] == [120.00001, 30]
+    assert track['warnings']
+
+
 def test_demo_loads_cleaned_west_lake_route(client):
     response = client.post('/api/demo')
     assert response.status_code == 200

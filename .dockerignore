@@ -24,5 +24,8 @@ htmlcov
 *.egg-info
 build
 tmp
+temp
+*.[kK][mM][lL]
+*.[gG][pP][xX]
 examples/*
 !examples/West Lake Loop.kml

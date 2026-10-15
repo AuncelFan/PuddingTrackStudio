@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "PuddingTrackStudio: fixed-camera KML replay and minimap video export",
+  "description": "PuddingTrackStudio: fixed-camera KML/GPX replay and minimap video export",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/AuncelFan/PuddingTrackStudio.git"
@@ -16,7 +16,7 @@
     "build": "vite build",
     "setup:hevc-alpha": "uv run python scripts/setup-hevc-alpha.py",
     "start": "uv run python run.py",
-    "test": "uv run pytest && node --test tests/*.test.mjs",
+    "test": "uv run python -m pytest && node --test tests/*.test.mjs",
     "test:e2e": "node scripts/smoke.mjs",
     "test:e2e:subpath": "node scripts/smoke-subpath.mjs"
   },

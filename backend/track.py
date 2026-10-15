@@ -1,16 +1,18 @@
-"""KML parsing and time resampling. No smoothing, scoring or distance resampling."""
+"""KML/GPX parsing and time resampling. No smoothing or distance resampling."""
 from __future__ import annotations
 
 import math
 import re
 from bisect import bisect_right
 from datetime import datetime, timezone
+from itertools import combinations, groupby
 from pathlib import Path
 
 from defusedxml import ElementTree as ET
 
 MAX_POINTS = 300_000
 MAX_FRAMES = 216_000
+DUPLICATE_DISTANCE_METERS = 10.0
 
 
 class TrackError(ValueError):
@@ -264,7 +266,7 @@ def normalize(name, raw, source, duration=None):
         raise TrackError("轨迹中部分点缺少时间，不能可靠地按时间回放。")
     if synthetic:
         if duration is None:
-            raise TrackError("该 KML 不含逐点时间；请填写实际总时长后重新导入。推算模式会按距离匀速播放。", "missing_time")
+            raise TrackError("该轨迹不含逐点时间；请填写实际总时长后重新导入。推算模式会按距离匀速播放。", "missing_time")
         if not math.isfinite(duration) or duration <= 0 or duration > 604800:
             raise TrackError("推算总时长须大于 0 且不超过 604800 秒。")
         warnings.append("原文件没有逐点时间；当前时间按总时长和距离匀速推算，并非真实记录时间。")
@@ -285,15 +287,25 @@ def normalize(name, raw, source, duration=None):
             for i, point in enumerate(segment):
                 raw.append([*point[:4], i == 0])
         deduped = []
-        for point in raw:
-            if deduped and point[3] < deduped[-1][3]:
+        merged_groups = removed_points = 0
+        for _, same_time in groupby(raw, key=lambda point: point[3]):
+            same_time = list(same_time)
+            if deduped and same_time[0][3] < deduped[-1][3]:
                 raise TrackError("多个轨迹段的时间相互重叠；请拆成独立轨迹后导入。")
-            if deduped and point[3] == deduped[-1][3]:
-                if point[:3] != deduped[-1][:3]:
-                    raise TrackError("同一时间存在不同位置，无法唯一插值；请修正时间或拆分轨迹。")
-                warnings.append("已合并坐标和时间均相同的重复点。")
-                continue
+            if len(same_time) > 1:
+                # Check the entire group, not just successive points: a chain
+                # of small steps must not merge positions over 10 m apart.
+                positions = list(dict.fromkeys((point[0], point[1]) for point in same_time))
+                if any(haversine(a, b) > DUPLICATE_DISTANCE_METERS for a, b in combinations(positions, 2)):
+                    raise TrackError("同一时间的轨迹点水平距离超过 10 米，无法唯一插值；请修正时间或拆分轨迹。")
+                merged_groups += 1
+                removed_points += len(same_time) - 1
+            # Keep the last recorded position/altitude, carrying any segment
+            # boundary forward so duplicate points cannot connect two segments.
+            point = [*same_time[-1][:4], any(point[4] for point in same_time)]
             deduped.append(point)
+        if merged_groups:
+            warnings.append(f"已合并 {merged_groups} 组同一时间且水平位置差异不超过 10 米的轨迹点，减少 {removed_points} 点；每组保留最后一个点。")
         raw = deduped
         if len(raw) < 2 or raw[-1][3] <= raw[0][3]:
             raise TrackError("轨迹需要至少两个不同的时间。")
@@ -409,6 +421,55 @@ def parse_kml(contents: bytes, filename="track.kml", duration=None):
     if not parsed:
         raise TrackError("未找到 gx:Track、带时间的轨迹点或 LineString。")
     return parsed
+
+
+def parse_gpx(contents: bytes, filename="track.gpx", duration=None):
+    try:
+        root = ET.fromstring(contents)
+    except Exception as exc:
+        raise TrackError("无法解析 GPX XML（文件损坏或包含不允许的实体）。", "invalid_gpx") from exc
+    if tag(root) != "gpx":
+        raise TrackError("文件根节点必须是 gpx。", "invalid_gpx")
+
+    parsed = []
+    metadata = next(iter(children(root, "metadata")), None)
+    fallback_name = (direct_text(metadata, "name") if metadata is not None else direct_text(root, "name")) or Path(filename).stem
+    try:
+        for container in root:
+            kind = tag(container)
+            if kind not in ("trk", "rte"):
+                continue
+            raw = []
+            segments = children(container, "trkseg") if kind == "trk" else [container]
+            for segment in segments:
+                for i, point in enumerate(children(segment, "trkpt" if kind == "trk" else "rtept")):
+                    try:
+                        lon, lat = float(point.attrib["lon"]), float(point.attrib["lat"])
+                        altitude = float(direct_text(point, "ele", "0"))
+                    except (KeyError, ValueError) as exc:
+                        raise TrackError("GPX 轨迹点缺少有效的经纬度或海拔。") from exc
+                    position = coordinate(f"{lon},{lat},{altitude}")
+                    time = direct_text(point, "time")
+                    raw.append([*position, timestamp(time) if time else None, i == 0])
+            if raw:
+                parsed.append(normalize(direct_text(container, "name") or fallback_name, raw, f"GPX {kind}", duration))
+        if not parsed:
+            raise TrackError("未找到 GPX trk/trkseg/trkpt 或 rte/rtept 路线；独立航点不能作为回放轨迹。")
+    except TrackError as exc:
+        if exc.code == "invalid_kml":
+            exc.code = "invalid_gpx"
+        raise
+    return parsed
+
+
+def parse_track(contents: bytes, filename, duration=None):
+    """Dispatch uploads by their supported, case-insensitive file extension."""
+    extension = Path(filename).suffix.lower()
+    if extension == ".gpx":
+        return parse_gpx(contents, filename, duration)
+    if extension == ".kml":
+        return parse_kml(contents, filename, duration)
+    raise TrackError("请选择 .kml 或 .gpx 文件。", "unsupported_format")
 
 
 def make_plan(track, speed=60.0, fps=30, start=0.0, end=None):

@@ -1,4 +1,5 @@
 from pathlib import Path
+from math import degrees
 
 import pytest
 
@@ -171,6 +172,61 @@ def test_repeated_stationary_recordings_are_not_removed():
 def test_duplicate_conflicting_timestamp_rejected():
     with pytest.raises(TrackError, match='同一时间'):
         normalize('bad', [[0, 0, 0, 0, True], [1, 0, 0, 0, False]], 'test')
+
+
+def test_duplicate_times_keep_last_position_altitude_and_duration():
+    data = kml(gx(
+        ['0 0 0', '0.00001 0 10', '0.00002 0 20', '0.001 0 30'],
+        ['2026-01-01T00:00:00Z'] * 3 + ['2026-01-01T00:00:10Z'],
+    ))
+    track = parse_kml(data)[0]
+    assert track['pointCount'] == 2
+    assert track['points'][0][:3] == [0.00002, 0, 20]
+    assert track['points'][0][5]
+    assert track['durationSeconds'] == 10
+    assert track['startTime'] == '2026-01-01T00:00:00+00:00'
+    assert track['endTime'] == '2026-01-01T00:00:10+00:00'
+    assert any('1 组' in warning and '减少 2 点' in warning for warning in track['warnings'])
+    assert make_plan(track, speed=1, fps=1)['frames'][0][:3] == [0.00002, 0, 20]
+
+
+@pytest.mark.parametrize('meters, allowed', [(9.999, True), (10, True), (10.001, False)])
+def test_duplicate_time_horizontal_distance_limit(meters, allowed):
+    raw = [[0, 0, 0, 0, True], [degrees(meters / 6_371_008.8), 0, 100, 0, False], [0.001, 0, 0, 10, False]]
+    if allowed:
+        track = normalize('nearby', raw, 'test')
+        assert track['pointCount'] == 2
+        assert track['points'][0][:3] == raw[1][:3]
+    else:
+        with pytest.raises(TrackError, match='超过 10 米'):
+            normalize('distant', raw, 'test')
+
+
+@pytest.mark.parametrize('offsets', [[0, 6, 12], [0, 12, 6]])
+def test_duplicate_time_limit_checks_every_pair_in_group(offsets):
+    raw = [[degrees(meters / 6_371_008.8), 0, 0, 0, i == 0] for i, meters in enumerate(offsets)]
+    raw.append([0.001, 0, 0, 10, False])
+    with pytest.raises(TrackError, match='超过 10 米'):
+        normalize('chain', raw, 'test')
+
+
+def test_duplicate_time_across_segments_preserves_boundary_and_gap():
+    track = normalize('segments', [
+        [0, 0, 0, 0, True], [0.001, 0, 0, 10, False],
+        [0.001, 0, 1, 10, True], [0.002, 0, 1, 20, False],
+    ], 'test')
+    assert track['segmentCount'] == 2
+    assert track['pointCount'] == 3
+    assert track['points'][1][5]
+    frames = make_plan(track, speed=5, fps=1)['frames']
+    assert frames[1][:2] == [0, 0]
+    assert frames[2][:3] == [0.001, 0, 1]
+
+
+def test_duplicate_time_does_not_allow_overlapping_segments():
+    with pytest.raises(TrackError, match='时间相互重叠'):
+        normalize('overlap', [[0, 0, 0, 0, True], [0.001, 0, 0, 20, False],
+                              [0, 0, 0, 10, True], [0.001, 0, 0, 30, False]], 'test')
 
 
 @pytest.mark.parametrize('body', [b'not XML', b'<!DOCTYPE kml [<!ENTITY x SYSTEM "file:///etc/passwd">]><kml>&x;</kml>', kml(gx(['0 0 0'], [])), kml(gx(['NaN 0 0', '0 0 0'], ['2026-01-01T00:00:00Z', '2026-01-01T00:00:10Z']))])

@@ -2,7 +2,7 @@
 name = "pudding-track-studio"
 version = "0.1.0"
 license = "MIT"
-description = "Fixed-camera KML replay and deterministic minimap video export"
+description = "Fixed-camera KML/GPX replay and deterministic minimap video export"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",

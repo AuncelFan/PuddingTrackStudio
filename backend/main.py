@@ -17,12 +17,13 @@ from fastapi.staticfiles import StaticFiles
 from .jobs import DATA, ROOT, JobManager, ffmpeg_path, write_json
 from .hevc import hevc_alpha_capability
 from .models import ExportRequest, PlanRequest
-from .track import TrackError, make_plan, parse_kml
+from .track import TrackError, make_plan, parse_track
 
 TRACKS = DATA / "tracks"
 TILES = DATA / "tiles"
 MAX_UPLOAD = 20 * 1024 * 1024
 DEMO = ROOT / "examples/West Lake Loop.kml"
+VERSION = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
 
 
 @asynccontextmanager
@@ -33,7 +34,7 @@ async def lifespan(app):
     app.state.tile_semaphore = asyncio.Semaphore(4)
     app.state.tile_locks = {}
     app.state.http = httpx.AsyncClient(timeout=20, follow_redirects=True, headers={
-        "User-Agent": "PuddingTrackStudio/0.1 (https://github.com/AuncelFan/PuddingTrackStudio)",
+        "User-Agent": f"PuddingTrackStudio/{VERSION} (https://github.com/AuncelFan/PuddingTrackStudio)",
         "Referer": "https://www.openstreetmap.org/",
     })
     yield
@@ -41,7 +42,7 @@ async def lifespan(app):
     await run_in_threadpool(app.state.jobs.close)
 
 
-app = FastAPI(title="PuddingTrackStudio", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="PuddingTrackStudio", version=VERSION, lifespan=lifespan)
 
 
 @app.exception_handler(TrackError)
@@ -59,7 +60,7 @@ def get_track(track_id):
 
 
 def save_tracks(contents, filename, duration=None):
-    tracks = parse_kml(contents, filename, duration)
+    tracks = parse_track(contents, filename, duration)
     for track in tracks:
         track["id"] = str(uuid.uuid4())
         track["filename"] = filename
@@ -69,15 +70,15 @@ def save_tracks(contents, filename, duration=None):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "ffmpeg": Path(ffmpeg_path()).name,
+    return {"status": "ok", "version": VERSION, "ffmpeg": Path(ffmpeg_path()).name,
             "renderer": "shared Canvas 2D / Skia", "maxFrames": 216000,
             "hevcAlpha": await run_in_threadpool(hevc_alpha_capability)}
 
 
 @app.post("/api/tracks")
 async def upload_track(file: UploadFile = File(), duration_seconds: float | None = Form(default=None)):
-    if not (file.filename or "").lower().endswith(".kml"):
-        raise HTTPException(422, "请选择 .kml 文件。")
+    if Path(file.filename or "").suffix.lower() not in (".kml", ".gpx"):
+        raise HTTPException(422, "请选择 .kml 或 .gpx 文件。")
     try:
         contents = await file.read(MAX_UPLOAD + 1)
     finally:

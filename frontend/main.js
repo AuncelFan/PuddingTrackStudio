@@ -6,6 +6,7 @@ import { clock, fitCamera } from '../shared/scene.mjs';
 import { estimateOutputBytes, formatFileSize, formatSizeEstimate } from '../shared/output-size.mjs';
 import { appPath } from './app-path.js';
 import { enhanceNumberInputs } from './number-input.js';
+import { version } from '../package.json';
 import './style.css';
 
 const iconSet = { Upload, Play, Pause, SkipBack, SkipForward, LockKeyhole, UnlockKeyhole, Map, Route,
@@ -30,20 +31,20 @@ $('#app').innerHTML = `
   <header class="topbar">
     <a class="brand" href="./" aria-label="PuddingTrackStudio 首页"><span class="brand-mark"><i data-lucide="route"></i></span><span>Pudding<span class="brand-light">TrackStudio</span><small>轨迹影像工作台</small></span></a>
     <span class="header-note">把走过的路，放进你的故事。</span>
-    <div class="header-actions"><button id="demo" class="button ghost" aria-label="载入示例" title="载入示例"><i data-lucide="mountain"></i>载入示例</button><button id="import-top" class="button secondary"><i data-lucide="upload"></i>导入 KML</button></div>
+    <div class="header-actions"><button id="demo" class="button ghost" aria-label="载入示例" title="载入示例"><i data-lucide="mountain"></i>载入示例</button><button id="import-top" class="button secondary"><i data-lucide="upload"></i>导入轨迹</button></div>
   </header>
   <main class="workspace">
     <aside class="sidebar left-sidebar">
       <div class="section-heading"><span>轨迹素材</span><span class="eyebrow">01 / SOURCE</span></div>
-      <label class="upload-zone" id="dropzone" for="file"><span class="upload-icon"><i data-lucide="file-up"></i></span><strong>拖入你的 KML 文件</strong><span>或点击选择 · 最大 20 MB</span><input id="file" type="file" accept=".kml" /></label>
+      <label class="upload-zone" id="dropzone" for="file"><span class="upload-icon"><i data-lucide="file-up"></i></span><strong>拖入 KML / GPX 文件</strong><span>或点击选择 · 最大 20 MB</span><input id="file" type="file" accept=".kml,.gpx" /></label>
       <div class="track-card" id="track-card" hidden><div class="track-card-head"><span class="status-dot"></span><span>轨迹已就绪</span><span id="source-kind" class="tag"></span></div><h2 id="track-name"></h2><p id="track-file"></p><select id="track-select" aria-label="选择轨迹" hidden></select><div class="track-stats"><div><i data-lucide="route"></i><span>路线距离</span><strong id="distance">—</strong></div><div><i data-lucide="clock-3"></i><span>实际时长</span><strong id="duration">—</strong></div><div><i data-lucide="layers"></i><span>原始点数</span><strong id="point-count">—</strong></div></div><p id="time-range" class="muted"></p></div>
-      <details class="import-details"><summary>无时间信息的 KML <i data-lucide="chevron-down"></i></summary><p>若文件只有路线，可填写实际总时长，按距离匀速推算。它不会还原真实停留。</p><label>实际总时长（秒）<input id="fallback-duration" type="number" min="1" max="604800" placeholder="例如 3600" /></label><button id="reimport" class="button secondary small">使用此时长重新导入</button></details>
+      <details class="import-details"><summary>无时间信息的轨迹 <i data-lucide="chevron-down"></i></summary><p>若文件只有路线，可填写实际总时长，按距离匀速推算。它不会还原真实停留。</p><label>实际总时长（秒）<input id="fallback-duration" type="number" min="1" max="604800" placeholder="例如 3600" /></label><button id="reimport" class="button secondary small">使用此时长重新导入</button></details>
       <div id="warnings" class="notice warning" hidden></div>
       <div class="section-heading style-heading"><span>画面风格</span><span class="eyebrow">02 / STYLE</span></div>
       <button class="style-card selected" id="style-map" aria-pressed="true"><div class="style-thumbnail map-thumbnail"><svg viewBox="0 0 100 65" aria-hidden="true"><path d="M15 47L30 43L25 28L48 16L64 24L81 16L86 37L65 48L48 40L40 54Z"/><circle cx="64" cy="24" r="4"/></svg></div><div><strong>地图轨迹</strong><span>空间参照 · 清晰直观</span></div><span class="selected-check"><i data-lucide="check"></i></span></button>
       <button class="style-card" id="style-geometry" aria-pressed="false"><div class="style-thumbnail geometry-thumbnail"><svg viewBox="0 0 100 65" aria-hidden="true"><path d="M17 48L32 43L27 27L47 18L62 26L81 16L85 38L64 48L47 41L39 53"/><circle cx="62" cy="26" r="4"/></svg></div><div><strong>极简几何</strong><span>游戏 HUD · 透明叠加</span></div><span class="selected-check"><i data-lucide="check"></i></span></button>
       <div class="sidebar-tip"><i data-lucide="circle-help"></i><p>先调整地图范围，再锁定视角。<br>播放时地图固定，标记沿轨迹移动。</p></div>
-      <div class="sidebar-footer"><span class="status-dot"></span><span id="service-status">正在连接本地服务</span><span>v0.1</span></div>
+      <div class="sidebar-footer"><span class="status-dot"></span><span id="service-status">正在连接本地服务</span><span>v${version}</span></div>
     </aside>
 
     <section class="editor">
@@ -93,7 +94,7 @@ $('#app').innerHTML = `
       <button id="export" class="button primary export-button" disabled><i data-lucide="download"></i><span>导出视频</span><i data-lucide="arrow-up-right"></i></button>
     </div>
   </dialog>
-  <footer class="bottom-bar"><span>PuddingTrackStudio <b>/</b> KML → MINIMAP VIDEO</span><span>本地处理 <b>·</b> 精确逐帧渲染 <b>·</b> 为创作而生</span></footer>`;
+  <footer class="bottom-bar"><span>PuddingTrackStudio <b>/</b> KML / GPX → MINIMAP VIDEO</span><span>本地处理 <b>·</b> 精确逐帧渲染 <b>·</b> 为创作而生</span></footer>`;
 icons();
 enhanceNumberInputs();
 

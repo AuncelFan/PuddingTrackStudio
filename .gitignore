@@ -8,6 +8,9 @@ build/
 
 # Imported tracks, exports and cached map tiles
 .data/
+/temp/
+*.[kK][mM][lL]
+*.[gG][pP][xX]
 *.mp4
 *.mov
 *.webm
