@@ -3,7 +3,7 @@
 项目仓库：[AuncelFan/PuddingTrackStudio](https://github.com/AuncelFan/PuddingTrackStudio)。
 使用 [MIT License](LICENSE)。
 
-当前版本：**[v0.1.0](https://github.com/AuncelFan/PuddingTrackStudio/releases/tag/v0.1.0)**。从这一版开始，更新使用 `v主版本.次版本.修订号` 标记，并记入 [CHANGELOG.md](CHANGELOG.md)。
+当前版本：**[v0.1.1](https://github.com/AuncelFan/PuddingTrackStudio/releases/tag/v0.1.1)**。更新使用 `v主版本.次版本.修订号` 标记，并记入 [CHANGELOG.md](CHANGELOG.md)。
 
 把含时间的 KML / GPX 轨迹生成固定视角的小地图动画，用于第一视角视频的左上角。**镜头保持不动，人物标记按记录时间移动**。前端不插值，也不通过轨迹长度推算真实运动速度。
 
@@ -134,7 +134,15 @@ docker compose up --build -d
 
 Docker 在 http://127.0.0.1:8000 提供应用，挂载 `.data/` 持久化数据。当前为单机本地创作工具；若需公网或多用户服务，需要另行加入鉴权、独立任务队列和存储配额。
 
+构建使用 BuildKit 分层缓存，并单独缓存 npm、uv、APT 下载及 HEVC 编码器的源码和编译产物。uv 固定为 `0.11.7`，只在构建阶段使用；Python 依赖按 `uv.lock` 导出并校验哈希，安装到 `/opt/venv`，容器启动直接运行其中的 Python，不再调用 uv 或下载 Python 环境。
+
+仅修改业务代码或版本号时，Python/npm 依赖安装层和 HEVC 编码层可以继续复用；前端改动只重新构建页面。依赖变化时，安装步骤会重新执行，但已下载的包可从 BuildKit 缓存读取。HEVC 脚本、验证逻辑或基础系统版本发生变化时会使用新的编译目录，避免复用旧配置的编码器。
+
+正常更新运行 `docker compose up --build -d` 即可。首次构建或更换构建器、清理 BuildKit 缓存后仍需下载和编译；日常更新无需 `--no-cache`，也不要在每次构建前运行 `docker builder prune`。下载缓存保存在 Docker 构建器内，不会装入最终运行镜像。
+
 Docker 下载 Debian 依赖较慢时，可以构建时指定镜像源，例如 `docker build --build-arg DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn -t pudding-track-studio .`；默认仍使用 Debian 官方源。代理需使用容器可访问的地址，Docker Desktop 通常可使用 `host.docker.internal`，并通过 `--build-arg HTTP_PROXY=... --build-arg HTTPS_PROXY=...` 传入。
+
+Python 包下载较慢时，可加 `--build-arg UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple`；默认使用 PyPI 官方源。更换下载源仍须通过锁文件导出的包版本和哈希校验。
 
 前端是单页应用，构建资源、图标、首页、API、瓦片及下载均通过相对路径访问，可直接部署到 `/trace/` 等子目录，也可使用 `index.html` 或 hash 地址，无需重新指定 Vite 构建前缀。部署目录 URL 须以 `/` 结束（例如 `/trace/`）；将 `/trace` 重定向至 `/trace/`，并让该目录下的 `api/` 请求到达 FastAPI。例如 Nginx 同时代理生产页面与 API：
 

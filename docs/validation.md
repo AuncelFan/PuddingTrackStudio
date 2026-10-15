@@ -1,5 +1,15 @@
 # 验证记录
 
+## 2026-10-15：v0.1.1 Docker 缓存优化
+
+- `npm test`：83 项 Python / 19 项 Node 测试通过；`npm run build`、`uv lock --check --offline`、`docker compose config --quiet` 和 `git diff --check` 通过。
+- 实际构建运行镜像并验证五种缓存情形：首次验证重建 4.23 秒、再次无变化重建 1.75 秒、仅修改后端代码 2.15 秒、仅修改版本号 6.82 秒。四次均确认 Python、npm 和 HEVC 安装 / 编译步骤标记为 `CACHED`。这些是本机已有基础镜像及缓存时的耗时，不是首次冷构建耗时。
+- 在隔离构建上下文中改变安装指令使步骤重新执行，并通过 `--network=none`、npm / uv 的 `--offline` 强制断网：68.87 秒完成，npm 和 Python 包从下载缓存安装，HEVC 复用编译产物并重新通过 Alpha 探测。APT 也从已有缓存完成安装。
+- 首次完整构建使用清华 Debian / PyPI 镜像及宿主代理；官方 FFmpeg 下载较慢，因此仅将本地已有且 SHA-256 验证通过的源码压缩包预填入下载缓存，编码器仍在 Docker 中实际编译，未复制宿主编译产物。锁定版本与哈希保持不变。
+- 最终镜像约 1.206 GB（旧镜像约 1.272 GB）。断网运行确认 Python 使用 `/opt/venv`，运行镜像没有 uv，应用依赖可直接导入。随机本地端口启动临时容器，健康检查返回 `0.1.1`，HEVC Alpha 探测值为 0 / 129 / 255 / 64。
+- 生产容器通过独立无头浏览器的子目录端到端验证，覆盖 GPX 导入、固定相机、界面 / 下载与取消。实际导出 MP4、WebM、ProRes 和透明 / 半透明 HEVC Alpha，各 25 帧，使用容器编译的 HEVC 解码器逐帧校验透明度、颜色和帧数；没有挂载用户数据或操作桌面。
+- 构建、缓存和端到端日志存于忽略的 `test-results/docker-v0.1.1-*`，不提交运行产物。
+
 ## 2026-10-15：重复时间合并与 GPX 导入
 
 - `uv run python -m pytest -q`：83 项通过；`node --test tests/*.test.mjs`：19 项通过；`npm run build` 通过。

@@ -2,6 +2,15 @@
 
 从 `v0.1.0` 开始，每次交付使用版本号标记。版本采用 `主版本.次版本.修订号`，每个发布版本对应 Git 标签和 GitHub Release。
 
+## [0.1.1](https://github.com/AuncelFan/PuddingTrackStudio/releases/tag/v0.1.1) - 2026-10-15
+
+- Docker 将 Python/npm 依赖、前端构建、运行依赖和 HEVC 编码器拆为独立阶段；仅修改版本号时不使依赖安装层失效。
+- 为 uv、npm、APT 和 HEVC 源码 / 编译产物增加 BuildKit 缓存，减少依赖层重建或构建中断后的重复下载与编译。
+- 固定构建工具 uv 为 `0.11.7`，按锁文件及哈希安装 Python 依赖，禁止自动下载 Python；运行镜像直接使用已安装的虚拟环境启动。
+- 补充 Docker 缓存边界和日常更新说明。
+
+验证：83 项 Python 测试、19 项 Node 测试、生产构建和容器中的四种视频格式实际导出 / 解码通过。重复构建、业务代码变化和仅版本变化均命中依赖与编码器层缓存；强制重新安装时，断网复用下载 / 编译缓存成功。
+
 ## [0.1.0](https://github.com/AuncelFan/PuddingTrackStudio/releases/tag/v0.1.0) - 2026-10-15
 
 - 支持 KML 与 GPX 1.0 / 1.1 导入，包括多轨迹、分段、海拔、时区及无逐点时间时的总时长推算。
