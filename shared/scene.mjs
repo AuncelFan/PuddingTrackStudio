@@ -124,8 +124,8 @@ export function clock(seconds) {
 export function createScene({ createCanvas, track, config, camera, basemapImage = null, overlay = false }) {
   const { width, height } = config;
   const unit = Math.min(width, height) / 640;
-  const base = createCanvas(width, height), trail = createCanvas(width, height);
-  const ctx = base.getContext('2d'), trailCtx = trail.getContext('2d');
+  const base = createCanvas(width, height), route = createCanvas(width, height);
+  const ctx = base.getContext('2d'), routeCtx = route.getContext('2d');
   const basemap = config.mode === 'map' ? config.basemap : 'grid';
   const projected = track.points.map(p => {
     const xy = screenPoint(project(p[0], p[1], basemap), camera, width, height);
@@ -146,7 +146,7 @@ export function createScene({ createCanvas, track, config, camera, basemapImage 
     }
     headings.push(heading);
   }
-  ctx.lineCap = ctx.lineJoin = trailCtx.lineCap = trailCtx.lineJoin = 'round';
+  ctx.lineCap = ctx.lineJoin = routeCtx.lineCap = routeCtx.lineJoin = 'round';
   if (geometry) {
     if (config.backgroundOpacity > 0) {
       ctx.globalAlpha = config.backgroundOpacity;
@@ -184,62 +184,70 @@ export function createScene({ createCanvas, track, config, camera, basemapImage 
     ctx.globalAlpha = routeAlpha * 0.85;
     ctx.strokeStyle = '#15252d'; ctx.lineWidth = lineWidth + 3 * unit; ctx.stroke();
   }
-  ctx.globalAlpha = routeAlpha;
-  ctx.strokeStyle = config.routeColor;
-  ctx.lineWidth = lineWidth;
-  if (geometry && config.glow) { ctx.shadowColor = config.routeColor; ctx.shadowBlur = 10 * unit; }
-  ctx.stroke(); ctx.shadowBlur = 0;
+  path(routeCtx, projected);
+  routeCtx.globalAlpha = routeAlpha;
+  routeCtx.strokeStyle = config.routeColor;
+  routeCtx.lineWidth = lineWidth;
+  if (geometry && config.glow) { routeCtx.shadowColor = config.routeColor; routeCtx.shadowBlur = 10 * unit; }
+  routeCtx.stroke();
   ctx.globalAlpha = 1;
-  if (config.showEndpoints) {
-    for (const [i, label] of [[0, 'S'], [projected.length - 1, 'F']]) {
-      const [x, y] = projected[i];
-      circle(ctx, x, y, 8 * unit, '#152026', '#dbe5e4', 1.5 * unit);
-      ctx.font = `bold ${9 * unit}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#e4ecec'; ctx.fillText(label, x, y + unit * 0.5);
-    }
-  }
-  const attribution = geometry ? '' : BASEMAPS[basemap]?.attribution;
-  if (attribution) {
-    ctx.font = `${Math.max(9, 10 * unit)}px sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    const textWidth = ctx.measureText(attribution).width;
-    ctx.fillStyle = '#ffffffd9'; ctx.fillRect(width - textWidth - 10, height - 18 * unit, textWidth + 10, 18 * unit);
-    ctx.fillStyle = '#33444b'; ctx.fillText(attribution, width - 5, height - 3 * unit);
-  }
-  let lastIndex = -1;
+  const trail = config.showTrail && trailColor !== config.routeColor ? createCanvas(width, height) : null;
+  const trailCtx = trail?.getContext('2d');
   let lastFrame = null;
   let lastVertex = -1;
 
-  function appendTrail(from, to, frameXY) {
-    trailCtx.globalAlpha = routeAlpha;
-    trailCtx.lineWidth = lineWidth;
-    trailCtx.strokeStyle = trailColor;
-    if (geometry && config.glow) { trailCtx.shadowColor = trailColor; trailCtx.shadowBlur = 8 * unit; }
-    trailCtx.beginPath();
-    if (from >= 0 && lastFrame) trailCtx.moveTo(...lastFrame);
-    else trailCtx.moveTo(...projected[0].slice(0, 2));
-    for (let i = Math.max(0, from + 1); i <= to; i++) {
-      const p = projected[i];
-      if (i === 0 || p[2]) trailCtx.moveTo(p[0], p[1]);
-      else trailCtx.lineTo(p[0], p[1]);
+  function colourTrail(vertex, xy) {
+    if (lastVertex === vertex && lastFrame?.every((value, i) => value === xy[i])) return;
+    // Start from the immutable route on every update. source-atop changes only
+    // colour: the route's original alpha, line width and glow remain intact,
+    // regardless of frame rate, pauses, crossings or playback history.
+    trailCtx.clearRect(0, 0, width, height);
+    trailCtx.drawImage(route, 0, 0);
+    trailCtx.save();
+    trailCtx.globalCompositeOperation = 'source-atop';
+    trailCtx.strokeStyle = trailCtx.fillStyle = trailColor;
+    if (vertex === projected.length - 1) {
+      trailCtx.fillRect(0, 0, width, height);
+    } else {
+      trailCtx.lineCap = trailCtx.lineJoin = 'round';
+      trailCtx.lineWidth = lineWidth;
+      if (geometry && config.glow) { trailCtx.shadowColor = trailColor; trailCtx.shadowBlur = 10 * unit; }
+      path(trailCtx, projected, vertex);
+      const p = projected[vertex];
+      if (p[0] !== xy[0] || p[1] !== xy[1]) trailCtx.lineTo(...xy);
+      trailCtx.stroke();
     }
-    trailCtx.lineTo(...frameXY);
-    trailCtx.stroke();
+    trailCtx.restore();
+    lastVertex = vertex; lastFrame = xy;
+  }
+
+  function drawLabels(ctx) {
+    if (config.showEndpoints) {
+      for (const [i, label] of [[0, 'S'], [projected.length - 1, 'F']]) {
+        const [x, y] = projected[i];
+        circle(ctx, x, y, 8 * unit, '#152026', '#dbe5e4', 1.5 * unit);
+        ctx.font = `bold ${9 * unit}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#e4ecec'; ctx.fillText(label, x, y + unit * 0.5);
+      }
+    }
+    const attribution = geometry ? '' : BASEMAPS[basemap]?.attribution;
+    if (attribution) {
+      ctx.font = `${Math.max(9, 10 * unit)}px sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      const textWidth = ctx.measureText(attribution).width;
+      ctx.fillStyle = '#ffffffd9'; ctx.fillRect(width - textWidth - 10, height - 18 * unit, textWidth + 10, 18 * unit);
+      ctx.fillStyle = '#33444b'; ctx.fillText(attribution, width - 5, height - 3 * unit);
+    }
   }
 
   return {
     draw(target, frame, frameIndex, plan) {
       const targetCtx = target.getContext('2d');
       const xy = screenPoint(project(frame[0], frame[1], basemap), camera, width, height);
-      if (config.showTrail) {
-        if (frameIndex < lastIndex || frame[4] < lastVertex) {
-          trailCtx.clearRect(0, 0, width, height); lastVertex = -1; lastFrame = null;
-        }
-        if (frameIndex !== lastIndex) appendTrail(lastVertex, frame[4], xy);
-      }
-      lastIndex = frameIndex; lastVertex = frame[4]; lastFrame = xy;
+      if (trail) colourTrail(frame[4], xy);
       targetCtx.clearRect(0, 0, width, height);
       targetCtx.drawImage(base, 0, 0);
-      if (config.showTrail) targetCtx.drawImage(trail, 0, 0);
+      targetCtx.drawImage(trail || route, 0, 0);
+      drawLabels(targetCtx);
       const radius = config.markerSize * unit;
       marker(targetCtx, ...xy, radius, config.markerStyle || 'dot', config.markerColor, unit,
         headings[Math.max(0, Math.min(headings.length - 1, frame[4]))]);

@@ -1,6 +1,6 @@
 [project]
 name = "pudding-track-studio"
-version = "0.1.1"
+version = "0.1.2"
 license = "MIT"
 description = "Fixed-camera KML/GPX replay and deterministic minimap video export"
 requires-python = ">=3.11"

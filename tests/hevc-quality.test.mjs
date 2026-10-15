@@ -10,7 +10,8 @@ import { createScene, fitCamera } from '../shared/scene.mjs';
 
 const ffmpeg = process.env.TRACE_HEVC_FFMPEG_PATH || join(process.cwd(), '.tools/hevc-alpha/bin/ffmpeg');
 
-test('HEVC export preserves the thin route and glow when Alpha is composited', { skip: !existsSync(ffmpeg) }, async () => {
+for (const showTrail of [false, true]) {
+test(`HEVC export preserves the thin route and glow when Alpha is composited (trail=${showTrail})`, { skip: !existsSync(ffmpeg) }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'trace-hevc-quality-'));
   try {
     const track = { points: [[120, 30, 0, 0, 0, true], [120.01, 30, 0, 10, 100, false], [120.01, 30.01, 0, 20, 200, false]] };
@@ -18,7 +19,7 @@ test('HEVC export preserves the thin route and glow when Alpha is composited', {
       width: 320, height: 320, mode: 'geometry', basemap: 'grid', format: 'hevc-alpha',
       backgroundColor: '#15232c', backgroundOpacity: 0, routeColor: '#91e2bc', markerColor: '#ffbc7a',
       routeOpacity: 0.85, lineWidth: 4, markerSize: 7, glow: true,
-      showGrid: false, showTrail: false, showHud: false, showEndpoints: false,
+      showGrid: false, showTrail, trailColor: '#ffbc7a', showHud: false, showEndpoints: false,
     };
     const camera = fitCamera(track.points, 320, 320, 'grid');
     const plan = { frames: [[120, 30, 0, 0, 0, 0], [120.01, 30.005, 0, 150, 1, 15]],
@@ -64,3 +65,4 @@ test('HEVC export preserves the thin route and glow when Alpha is composited', {
     await rm(directory, { recursive: true, force: true });
   }
 });
+}

@@ -1,5 +1,15 @@
 # 验证记录
 
+## 2026-10-15：v0.1.2 已走路线光晕修复
+
+- `npm test`：83 项 Python / 28 项 Node 测试通过；`npm run build`、离线锁文件检查、Compose 配置和 Git 差异格式检查通过。
+- 复现旧逻辑：连续绘制短线段会不断叠加透明度、圆头和阴影。合成折返轨迹连续渲染 2,001 帧，原路线与修复后 Alpha 总量均为 1,593,038；旧逻辑为 4,524,345，50,364 个像素 Alpha 发生变化，修复后为 0。对照图为 `test-results/trail-glow-comparison.png`。
+- 路线形状与辉光只绘制一次，动态高亮从该路线重建并通过 `source-atop` 改色；不叠加第二层路线透明度。覆盖有 / 无辉光、35% 透明度、慢速播放、停留、重复帧、同一帧号换位置、前后跳转、分段跳转、密集交叉和折返。整条走完后与直接使用高亮色的静态路线 Alpha 完全一致，预乘 RGB 的逐通道量化差不超过 1。
+- HEVC Alpha 真实编码测试同时覆盖高亮开关，解码后细线覆盖、Alpha 总量及黑 / 灰 / 白背景合成误差均通过既有阈值。
+- 构建 `pudding-track-studio:v0.1.2`，确认 Python、npm 和 HEVC 安装 / 编译步骤仍全部命中缓存。在随机本地端口的临时容器上执行独立无头浏览器子目录测试：开启 / 关闭辉光时，逐帧比较高亮前后的所有像素，Alpha 变化数量均为 0；截图为 `test-results/studio-trail-glow-fixed.png`。
+- 容器实际导出并逐帧解码 MP4、WebM、ProRes 及透明 / 半透明 HEVC Alpha，各 25 帧，透明度、颜色、帧数和下载通过；界面提交的高亮 MP4 / HEVC 导出、取消任务、GPX 输入、固定相机、子目录部署与移动布局也通过。
+- 测试产物和对照用旧渲染器仅保存在忽略的 `test-results/`；不改写用户轨迹。验证结束后移除临时容器及临时测试入口。
+
 ## 2026-10-15：v0.1.1 Docker 缓存优化
 
 - `npm test`：83 项 Python / 19 项 Node 测试通过；`npm run build`、`uv lock --check --offline`、`docker compose config --quiet` 和 `git diff --check` 通过。

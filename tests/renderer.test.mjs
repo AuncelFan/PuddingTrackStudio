@@ -87,7 +87,109 @@ test('seeking backwards produces exactly the same image as a fresh scene', () =>
   const a = createCanvas(320, 320), b = createCanvas(320, 320);
   scene.draw(a, plan.frames[1], 1, plan); scene.draw(a, plan.frames[0], 0, plan);
   fresh.draw(b, plan.frames[0], 0, plan);
-  assert.deepEqual(a.data(), b.data());
+  assert.ok(a.data().equals(b.data()));
+});
+
+const slowFrames = Array.from({ length: 241 }, (_, i) =>
+  [120 + 0.01 * i / 240, 30, 0, 100 * i / 240, i === 240 ? 1 : 0, i]);
+
+for (const glow of [false, true]) {
+  test(`travelled route preserves the original coverage and opacity (glow=${glow})`, () => {
+    const camera = fitCamera(track.points, 320, 320, 'grid');
+    const options = { createCanvas, track, camera, config: { ...config, mode: 'geometry',
+      backgroundOpacity: 0, glow, routeOpacity: 0.35, routeColor: '#ff0000', trailColor: '#2244ff' } };
+    const original = createScene(options);
+    const highlighted = createScene({ ...options, config: { ...options.config, showTrail: true } });
+    const a = createCanvas(320, 320), b = createCanvas(320, 320);
+    for (const [i, frame] of slowFrames.entries()) highlighted.draw(b, frame, i, {});
+    original.draw(a, slowFrames.at(-1), slowFrames.length - 1, {});
+    const before = pixels(a, 0, 0, 320, 320), after = pixels(b, 0, 0, 320, 320);
+    for (let i = 3; i < before.length; i += 4) {
+      assert.equal(after[i], before[i], `Highlight changed alpha at pixel ${(i - 3) / 4}`);
+    }
+    const [x, y] = screenPoint(project(120.005, 30), camera, 320, 320);
+    const passed = pixels(b, Math.round(x), Math.round(y));
+    assert.ok(passed[2] > passed[0] * 2, 'The passed route must still change colour');
+  });
+
+  test(`highlighting with the route colour leaves the image unchanged (glow=${glow})`, () => {
+    const camera = fitCamera(track.points, 320, 320, 'grid');
+    const options = { createCanvas, track, camera, config: { ...config, mode: 'geometry',
+      backgroundOpacity: 0.35, glow, routeOpacity: 0.5, trailColor: config.routeColor } };
+    const original = createScene(options);
+    const highlighted = createScene({ ...options, config: { ...options.config, showTrail: true } });
+    const a = createCanvas(320, 320), b = createCanvas(320, 320);
+    for (const [i, frame] of slowFrames.entries()) highlighted.draw(b, frame, i, {});
+    original.draw(a, slowFrames.at(-1), slowFrames.length - 1, {});
+    assert.ok(b.data().equals(a.data()));
+  });
+}
+
+test('trail rendering is independent of frame rate, pauses, repeated draws and seeking', () => {
+  const camera = fitCamera(track.points, 320, 320, 'grid');
+  const options = { createCanvas, track, camera, config: { ...config, mode: 'geometry',
+    backgroundOpacity: 0, glow: true, routeOpacity: 0.5, trailColor: '#2244ff', showTrail: true } };
+  const scene = createScene(options), fresh = createScene(options);
+  const a = createCanvas(320, 320), b = createCanvas(320, 320);
+  for (const [i, frame] of slowFrames.entries()) scene.draw(a, frame, i, {});
+  for (let i = 241; i < 481; i++) scene.draw(a, slowFrames.at(-1), i, {});
+  fresh.draw(b, slowFrames.at(-1), 480, {});
+  assert.ok(a.data().equals(b.data()), 'A pause must not accumulate opacity or glow');
+  scene.draw(a, slowFrames[120], 120, {});
+  fresh.draw(b, slowFrames[120], 120, {});
+  assert.ok(a.data().equals(b.data()), 'Seeking must reconstruct the same highlight');
+  scene.draw(a, slowFrames[180], 120, {});
+  fresh.draw(b, slowFrames[180], 180, {});
+  assert.ok(a.data().equals(b.data()), 'Current geometry must determine the image, even with a reused frame index');
+});
+
+test('a fully travelled route matches a static route in the trail colour, including glow', () => {
+  const camera = fitCamera(track.points, 320, 320, 'grid');
+  const options = { createCanvas, track, camera, config: { ...config, mode: 'geometry',
+    backgroundOpacity: 0, glow: true, routeOpacity: 0.5, trailColor: '#2244ff', showTrail: true } };
+  const animated = createScene(options);
+  const original = createScene({ ...options, config: { ...options.config, showTrail: false, routeColor: '#2244ff' } });
+  const a = createCanvas(320, 320), b = createCanvas(320, 320);
+  const frame = [120.01, 30.01, 0, 200, 2, 20];
+  animated.draw(a, frame, 20, {}); original.draw(b, frame, 20, {});
+  const after = a.data(), before = b.data();
+  for (let i = 0; i < before.length; i++) {
+    // Recolouring premultiplied 8-bit pixels can round a colour channel by one.
+    assert.ok(Math.abs(after[i] - before[i]) <= (i % 4 === 3 ? 0 : 1));
+  }
+});
+
+test('segment gaps remain empty when playback skips across them', () => {
+  const segments = { points: [[120, 30, 0, 0, 0, true], [120.002, 30, 0, 1, 20, false],
+    [120.008, 30, 0, 3, 20, true], [120.01, 30, 0, 4, 40, false]] };
+  const camera = fitCamera(segments.points, 320, 320, 'grid');
+  const options = { createCanvas, track: segments, camera, config: { ...config, mode: 'geometry',
+    backgroundOpacity: 0, glow: true, trailColor: '#2244ff', showTrail: true } };
+  const scene = createScene(options), fresh = createScene(options);
+  const a = createCanvas(320, 320), b = createCanvas(320, 320);
+  scene.draw(a, [120.001, 30, 0, 10, 0, 0.5], 0, {});
+  const frame = [120.009, 30, 0, 30, 2, 3.5];
+  scene.draw(a, frame, 100, {}); fresh.draw(b, frame, 100, {});
+  assert.ok(a.data().equals(b.data()));
+  const [x, y] = screenPoint(project(120.005, 30), camera, 320, 320);
+  assert.equal(pixels(a, Math.round(x), Math.round(y))[3], 0, 'No route or glow may bridge the gap');
+});
+
+test('dense retracing and crossings retain the original alpha with highlighting enabled', () => {
+  const dense = { points: Array.from({ length: 301 }, (_, i) =>
+    [120 + Math.sin(i / 10) * 0.005, 30 + Math.sin(i / 5) * 0.005, 0, i, i, i === 0]) };
+  const camera = fitCamera(dense.points, 320, 320, 'grid');
+  const options = { createCanvas, track: dense, camera, config: { ...config, mode: 'geometry',
+    backgroundOpacity: 0, glow: true, routeOpacity: 0.35, trailColor: '#2244ff' } };
+  const scene = createScene({ ...options, config: { ...options.config, showTrail: true } });
+  const original = createScene(options), fresh = createScene({ ...options, config: { ...options.config, showTrail: true } });
+  const a = createCanvas(320, 320), b = createCanvas(320, 320), c = createCanvas(320, 320);
+  const frames = dense.points.slice(0, 241).map((p, i) => [p[0], p[1], 0, i, i, i]);
+  for (const [i, frame] of frames.entries()) scene.draw(a, frame, i, {});
+  original.draw(b, frames.at(-1), 240, {}); fresh.draw(c, frames.at(-1), 240, {});
+  assert.ok(a.data().equals(c.data()), 'Dense geometry must not depend on earlier frames');
+  const before = pixels(b, 0, 0, 320, 320), after = pixels(a, 0, 0, 320, 320);
+  for (let i = 3; i < before.length; i += 4) assert.equal(after[i], before[i]);
 });
 
 test('tile mosaic covers a viewport and wraps at the date line', () => {

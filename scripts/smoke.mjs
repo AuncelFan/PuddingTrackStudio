@@ -261,6 +261,37 @@ try {
   await page.locator('#style-geometry').click();
   assert.equal(await page.locator('#format').inputValue(), 'webm');
   assert.equal(await page.locator('#scene').evaluate(canvas => canvas.getContext('2d').getImageData(0, 0, 1, 1).data[3]), 0);
+  const trailAlpha = await page.evaluate(() => {
+    const canvas = document.querySelector('#scene'), timeline = document.querySelector('#timeline');
+    const trail = document.querySelector('#show-trail'), glow = document.querySelector('#glow');
+    const opacity = document.querySelector('#route-opacity'), previousOpacity = opacity.value;
+    const previousGlow = glow.checked, previousTrail = trail.checked;
+    opacity.value = '35'; opacity.dispatchEvent(new Event('input', { bubbles: true }));
+    const seek = i => { timeline.value = String(i); timeline.dispatchEvent(new Event('input', { bubbles: true })); };
+    const alpha = () => canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.filter((_, i) => i % 4 === 3);
+    const results = [];
+    for (const enabled of [false, true]) {
+      glow.checked = enabled; glow.dispatchEvent(new Event('change', { bubbles: true }));
+      trail.checked = false; trail.dispatchEvent(new Event('change', { bubbles: true }));
+      const reference = [];
+      for (let i = 0; i <= Number(timeline.max); i++) { seek(i); reference.push(alpha()); }
+      seek(0); trail.checked = true; trail.dispatchEvent(new Event('change', { bubbles: true }));
+      let changed = 0;
+      for (let i = 0; i < reference.length; i++) {
+        seek(i);
+        const actual = alpha();
+        for (let p = 0; p < actual.length; p++) changed += Number(actual[p] !== reference[i][p]);
+      }
+      results.push({ glow: enabled, frames: reference.length, changedAlphaPixels: changed });
+    }
+    glow.checked = previousGlow; glow.dispatchEvent(new Event('change', { bubbles: true }));
+    trail.checked = previousTrail; trail.dispatchEvent(new Event('change', { bubbles: true }));
+    opacity.value = previousOpacity; opacity.dispatchEvent(new Event('input', { bubbles: true }));
+    return results;
+  });
+  assert.ok(trailAlpha.every(result => result.changedAlphaPixels === 0), JSON.stringify(trailAlpha));
+  console.log('Browser trail: original alpha preserved through every frame, with glow enabled and disabled');
+  await page.screenshot({ path: new URL('studio-trail-glow-fixed.png', output).pathname });
   await openExport();
   await page.locator('#format').selectOption('mp4');
   assert.ok(await page.locator('#export').isDisabled());
